@@ -110,9 +110,11 @@ export const useChat = () => {
         }
       }
 
-      // Auto-speak the Telugu part after response is complete
+      // Auto-speak the response after it's complete - with small delay to ensure content is ready
       if (assistantContent) {
-        speakTelugu(assistantContent);
+        setTimeout(() => {
+          speakResponse(assistantContent);
+        }, 500);
       }
     } catch (error) {
       if ((error as Error).name === "AbortError") {
@@ -128,52 +130,58 @@ export const useChat = () => {
     }
   }, [messages]);
 
-  const speakTelugu = (text: string) => {
-    // Extract Telugu portion
-    const teluguMarker = "తెలుగులో";
-    const markerIndex = text.indexOf(teluguMarker);
-    
-    let teluguText = text;
-    if (markerIndex !== -1) {
-      teluguText = text.substring(markerIndex)
-        .replace(/\*\*/g, '')
-        .replace(/---/g, '')
-        .replace(/─+/g, '')
-        .replace(/\(In Telugu\):/g, '')
-        .trim();
-    }
+  const speakResponse = (text: string) => {
+    if (!('speechSynthesis' in window) || !text) return;
 
-    if ('speechSynthesis' in window && teluguText) {
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
 
-      // Wait for voices to load
-      const speak = () => {
-        const utterance = new SpeechSynthesisUtterance(teluguText);
+    // Clean the text for reading
+    const cleanText = text
+      .replace(/\*\*/g, '')
+      .replace(/##/g, '')
+      .replace(/---/g, '')
+      .replace(/─+/g, '')
+      .trim();
+
+    const speak = () => {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      
+      // Try to find a good voice - prefer Telugu, fallback to any available
+      const voices = window.speechSynthesis.getVoices();
+      const teluguVoice = voices.find(voice => 
+        voice.lang.includes('te') || voice.name.toLowerCase().includes('telugu')
+      );
+      const hindiVoice = voices.find(voice => voice.lang.includes('hi'));
+      const defaultVoice = voices.find(voice => voice.lang.includes('en'));
+      
+      if (teluguVoice) {
+        utterance.voice = teluguVoice;
         utterance.lang = 'te-IN';
-        utterance.rate = 0.85;
-        utterance.pitch = 1.1;
-        utterance.volume = 1;
-
-        // Find Telugu voice if available
-        const voices = window.speechSynthesis.getVoices();
-        const teluguVoice = voices.find(voice => 
-          voice.lang.includes('te') || voice.name.toLowerCase().includes('telugu')
-        );
-        
-        if (teluguVoice) {
-          utterance.voice = teluguVoice;
-        }
-
-        window.speechSynthesis.speak(utterance);
-      };
-
-      // Voices may not be loaded yet
-      if (window.speechSynthesis.getVoices().length === 0) {
-        window.speechSynthesis.onvoiceschanged = speak;
-      } else {
-        speak();
+      } else if (hindiVoice) {
+        utterance.voice = hindiVoice;
+        utterance.lang = 'hi-IN';
+      } else if (defaultVoice) {
+        utterance.voice = defaultVoice;
+        utterance.lang = 'en-US';
       }
+
+      utterance.rate = 0.8; // Slower for children
+      utterance.pitch = 1.1;
+      utterance.volume = 1;
+
+      window.speechSynthesis.speak(utterance);
+    };
+
+    // Load voices first if needed
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        speak();
+        window.speechSynthesis.onvoiceschanged = null;
+      };
+    } else {
+      speak();
     }
   };
 
@@ -190,6 +198,6 @@ export const useChat = () => {
     isLoading,
     sendMessage,
     clearMessages,
-    speakTelugu,
+    speakResponse,
   };
 };
