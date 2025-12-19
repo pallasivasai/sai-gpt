@@ -34,8 +34,8 @@ const WelcomeScreen = () => {
       </p>
       
       <p className="text-muted-foreground mb-8 max-w-md">
-        Your intelligent AI assistant with Telugu text-to-speech. 
-        Ask questions via text, voice, or images.
+        Your dedicated AI assistant for all Devoote-related questions. 
+        Ask about our services, products, and solutions.
       </p>
       
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl w-full">
