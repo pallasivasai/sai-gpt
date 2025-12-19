@@ -1,10 +1,10 @@
-import { Bot } from "lucide-react";
+import yogaAvatar from "@/assets/yoga-avatar.png";
 
 const TypingIndicator = () => {
   return (
     <div className="flex gap-4 animate-fade-in">
-      <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-secondary border border-border">
-        <Bot className="w-5 h-5 text-primary" />
+      <div className="flex-shrink-0 w-12 h-12 rounded-full overflow-hidden bg-white shadow-card">
+        <img src={yogaAvatar} alt="SAI-GPT" className="w-full h-full object-cover" />
       </div>
       
       <div className="gradient-message-ai border border-border rounded-2xl px-5 py-4 shadow-card">
