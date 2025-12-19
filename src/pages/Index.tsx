@@ -7,6 +7,7 @@ import TypingIndicator from "@/components/TypingIndicator";
 import WelcomeScreen from "@/components/WelcomeScreen";
 import { useChat } from "@/hooks/useChat";
 import { useSpeech } from "@/hooks/useSpeech";
+import divineBackground from "@/assets/divine-background.jpg";
 
 const Index = () => {
   const { messages, isLoading, sendMessage, clearMessages } = useChat();
@@ -18,9 +19,17 @@ const Index = () => {
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-screen max-h-screen overflow-hidden">
+    <div 
+      className="flex flex-col h-screen max-h-screen overflow-hidden"
+      style={{
+        backgroundImage: `url(${divineBackground})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed'
+      }}
+    >
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 backdrop-blur-sm">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-border/30 bg-card/80 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shadow-button">
             <span className="text-xl font-bold text-primary-foreground">S</span>
