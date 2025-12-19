@@ -138,30 +138,42 @@ export const useChat = () => {
       teluguText = text.substring(markerIndex)
         .replace(/\*\*/g, '')
         .replace(/---/g, '')
+        .replace(/─+/g, '')
         .replace(/\(In Telugu\):/g, '')
         .trim();
     }
 
-    if ('speechSynthesis' in window) {
+    if ('speechSynthesis' in window && teluguText) {
       // Cancel any ongoing speech
       window.speechSynthesis.cancel();
 
-      const utterance = new SpeechSynthesisUtterance(teluguText);
-      utterance.lang = 'te-IN';
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
+      // Wait for voices to load
+      const speak = () => {
+        const utterance = new SpeechSynthesisUtterance(teluguText);
+        utterance.lang = 'te-IN';
+        utterance.rate = 0.85;
+        utterance.pitch = 1.1;
+        utterance.volume = 1;
 
-      // Find Telugu voice if available
-      const voices = window.speechSynthesis.getVoices();
-      const teluguVoice = voices.find(voice => 
-        voice.lang.includes('te') || voice.name.toLowerCase().includes('telugu')
-      );
-      
-      if (teluguVoice) {
-        utterance.voice = teluguVoice;
+        // Find Telugu voice if available
+        const voices = window.speechSynthesis.getVoices();
+        const teluguVoice = voices.find(voice => 
+          voice.lang.includes('te') || voice.name.toLowerCase().includes('telugu')
+        );
+        
+        if (teluguVoice) {
+          utterance.voice = teluguVoice;
+        }
+
+        window.speechSynthesis.speak(utterance);
+      };
+
+      // Voices may not be loaded yet
+      if (window.speechSynthesis.getVoices().length === 0) {
+        window.speechSynthesis.onvoiceschanged = speak;
+      } else {
+        speak();
       }
-
-      window.speechSynthesis.speak(utterance);
     }
   };
 
