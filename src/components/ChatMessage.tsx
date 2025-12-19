@@ -1,7 +1,7 @@
-import { Bot, User, Volume2, VolumeX } from "lucide-react";
-import { useState } from "react";
+import { User, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import yogaAvatar from "@/assets/yoga-avatar.png";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -37,15 +37,15 @@ const ChatMessage = ({ role, content, imageUrl, onSpeak, isSpeaking }: ChatMessa
       isUser ? "flex-row-reverse" : "flex-row"
     )}>
       <div className={cn(
-        "flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center",
+        "flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center overflow-hidden",
         isUser 
           ? "gradient-primary shadow-button" 
-          : "bg-secondary border border-border"
+          : "bg-white shadow-card"
       )}>
         {isUser ? (
-          <User className="w-5 h-5 text-primary-foreground" />
+          <User className="w-6 h-6 text-primary-foreground" />
         ) : (
-          <Bot className="w-5 h-5 text-primary" />
+          <img src={yogaAvatar} alt="SAI-GPT" className="w-full h-full object-cover" />
         )}
       </div>
       
