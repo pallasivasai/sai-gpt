@@ -62,9 +62,9 @@ const ChatMessage = ({ role, content, imageUrl, onSpeak, isSpeaking }: ChatMessa
             className="max-w-full h-auto rounded-lg mb-3 max-h-48 object-cover"
           />
         )}
-        <div className="prose prose-invert prose-sm max-w-none">
-          <p className="whitespace-pre-wrap text-[15px] leading-relaxed m-0">
-            {content}
+        <div className="max-w-none">
+          <p className="whitespace-pre-wrap text-[15px] leading-relaxed m-0 text-foreground">
+            {content.replace(/\*\*/g, '').replace(/##/g, '').replace(/---/g, '─────────────────')}
           </p>
         </div>
         
