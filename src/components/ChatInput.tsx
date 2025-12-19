@@ -110,7 +110,7 @@ const ChatInput = ({ onSend, isLoading }: ChatInputProps) => {
   };
 
   return (
-    <div className="p-4 border-t border-border bg-card/50 backdrop-blur-sm">
+    <div className="p-4 border-t border-border/30 bg-card/80 backdrop-blur-md">
       {imagePreview && (
         <div className="mb-3 relative inline-block animate-fade-in">
           <img 
