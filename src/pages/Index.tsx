@@ -7,16 +7,42 @@ import TypingIndicator from "@/components/TypingIndicator";
 import WelcomeScreen from "@/components/WelcomeScreen";
 import { useChat } from "@/hooks/useChat";
 import { useSpeech } from "@/hooks/useSpeech";
+import { useSoundEffects } from "@/hooks/useSoundEffects";
 import divineBackground from "@/assets/divine-background.jpg";
 
 const Index = () => {
   const { messages, isLoading, sendMessage, clearMessages } = useChat();
   const { speak, isSpeaking } = useSpeech();
+  const { playSound } = useSoundEffects();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMessagesLengthRef = useRef(messages.length);
+  const wasLoadingRef = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    
+    // Play receive sound when new assistant message arrives
+    if (messages.length > prevMessagesLengthRef.current) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage?.role === 'assistant' && lastMessage.content) {
+        playSound('receive');
+      }
+    }
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages, playSound]);
+
+  // Play pop when loading finishes
+  useEffect(() => {
+    if (wasLoadingRef.current && !isLoading) {
+      playSound('pop');
+    }
+    wasLoadingRef.current = isLoading;
+  }, [isLoading, playSound]);
+
+  const handleSend = (content: string, imageBase64?: string) => {
+    playSound('send');
+    sendMessage(content, imageBase64);
+  };
 
   return (
     <div 
@@ -78,7 +104,7 @@ const Index = () => {
       </main>
 
       {/* Input Area */}
-      <ChatInput onSend={sendMessage} isLoading={isLoading} />
+      <ChatInput onSend={handleSend} isLoading={isLoading} />
     </div>
   );
 };
