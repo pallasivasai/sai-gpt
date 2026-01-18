@@ -55,22 +55,91 @@ export const useChat = () => {
         throw new Error(errorData.error || "Failed to get response");
       }
 
-      const data = await response.json();
-      
-      // Create assistant message with text and optional image
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.content || "I couldn't generate a response.",
-        imageUrl: data.imageUrl || undefined,
-      };
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let assistantContent = "";
+      const assistantId = (Date.now() + 1).toString();
 
-      // Auto-speak the response after it's complete
-      if (assistantMessage.content) {
+      // Add empty assistant message that we'll update
+      setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "" }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        textBuffer += decoder.decode(value, { stream: true });
+
+        // Process line-by-line as data arrives
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              assistantContent += delta;
+              // Update the assistant message with new content
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantId
+                    ? { ...msg, content: assistantContent }
+                    : msg
+                )
+              );
+            }
+          } catch {
+            // Incomplete JSON, put it back and wait for more data
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+
+      // Final flush
+      if (textBuffer.trim()) {
+        for (let raw of textBuffer.split("\n")) {
+          if (!raw) continue;
+          if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+          if (raw.startsWith(":") || raw.trim() === "") continue;
+          if (!raw.startsWith("data: ")) continue;
+          const jsonStr = raw.slice(6).trim();
+          if (jsonStr === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              assistantContent += delta;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantId
+                    ? { ...msg, content: assistantContent }
+                    : msg
+                )
+              );
+            }
+          } catch { /* ignore */ }
+        }
+      }
+
+      // Auto-speak the response after streaming completes
+      if (assistantContent) {
         setTimeout(() => {
-          speakResponse(assistantMessage.content);
+          speakResponse(assistantContent);
         }, 300);
       }
     } catch (error) {
@@ -120,7 +189,7 @@ export const useChat = () => {
         utterance.lang = 'en-US';
       }
 
-      utterance.rate = 0.8; // Slower for children
+      utterance.rate = 0.8;
       utterance.pitch = 1.1;
       utterance.volume = 1;
 

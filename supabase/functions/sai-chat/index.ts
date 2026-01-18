@@ -5,43 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-async function generateImage(prompt: string, apiKey: string): Promise<string | null> {
-  try {
-    console.log("Generating image for:", prompt);
-    
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image-preview",
-        messages: [
-          {
-            role: "user",
-            content: `Create a beautiful, colorful, child-friendly illustration of ${prompt}. Make it vibrant, divine, and suitable for children learning about Hindu mythology. Style: animated, warm colors, glowing divine aura.`
-          }
-        ],
-        modalities: ["image", "text"]
-      }),
-    });
-
-    if (!response.ok) {
-      console.error("Image generation failed:", response.status);
-      return null;
-    }
-
-    const data = await response.json();
-    const imageUrl = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    console.log("Image generated successfully");
-    return imageUrl || null;
-  } catch (error) {
-    console.error("Image generation error:", error);
-    return null;
-  }
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -111,20 +74,7 @@ Remember: Children love details, stories, and magical descriptions. Make Lord Sh
       }
     ];
 
-    // Start image generation in parallel (don't await here)
-    const userQuery = lastUserMessage.content?.toLowerCase() || "";
-    let imagePromise: Promise<string | null> | null = null;
-    
-    // Generate image for deity/mythology questions
-    const deityKeywords = ['shiva', 'vishnu', 'brahma', 'krishna', 'rama', 'hanuman', 'ganesha', 'ganesh', 'durga', 'lakshmi', 'saraswati', 'parvati', 'kali', 'murugan', 'kartikeya', 'god', 'goddess', 'lord', 'devi', 'temple', 'festival', 'diwali', 'holi', 'navratri', 'dasara'];
-    
-    const shouldGenerateImage = deityKeywords.some(keyword => userQuery.includes(keyword));
-    
-    if (shouldGenerateImage) {
-      imagePromise = generateImage(lastUserMessage.content, LOVABLE_API_KEY);
-    }
-
-    // Get text response with faster model
+    // Get streaming text response
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -134,7 +84,7 @@ Remember: Children love details, stories, and magical descriptions. Make Lord Sh
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: apiMessages,
-        stream: false, // Non-streaming for complete response
+        stream: true,
       }),
     });
 
@@ -161,23 +111,9 @@ Remember: Children love details, stories, and magical descriptions. Make Lord Sh
       });
     }
 
-    const data = await response.json();
-    const textContent = data.choices?.[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
-    
-    // Wait for image if we started generating one
-    let imageUrl: string | null = null;
-    if (imagePromise) {
-      imageUrl = await imagePromise;
-    }
-
-    console.log("Response generated, image:", imageUrl ? "yes" : "no");
-
-    // Return complete response with optional image
-    return new Response(JSON.stringify({ 
-      content: textContent,
-      imageUrl: imageUrl
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Stream the response directly
+    return new Response(response.body, {
+      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
     console.error("Chat error:", e);
