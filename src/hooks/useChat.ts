@@ -10,10 +10,93 @@ interface Message {
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sai-chat`;
 
+// Queue for line-by-line speech
+class SpeechQueue {
+  private queue: string[] = [];
+  private isSpeaking = false;
+  private currentUtterance: SpeechSynthesisUtterance | null = null;
+
+  private getVoice(): SpeechSynthesisVoice | null {
+    const voices = window.speechSynthesis.getVoices();
+    // Prefer female Telugu voice
+    const femaleTeluguVoice = voices.find(v => 
+      (v.lang.includes('te') || v.name.toLowerCase().includes('telugu')) &&
+      (v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('woman'))
+    );
+    const teluguVoice = voices.find(v => 
+      v.lang.includes('te') || v.name.toLowerCase().includes('telugu')
+    );
+    const hindiVoice = voices.find(v => 
+      v.lang.includes('hi') && v.name.toLowerCase().includes('female')
+    );
+    return femaleTeluguVoice || teluguVoice || hindiVoice || null;
+  }
+
+  add(line: string) {
+    const cleanLine = line
+      .replace(/\*\*/g, '')
+      .replace(/##/g, '')
+      .replace(/---/g, '')
+      .replace(/─+/g, '')
+      .trim();
+    
+    if (cleanLine.length > 2) {
+      this.queue.push(cleanLine);
+      this.processQueue();
+    }
+  }
+
+  private processQueue() {
+    if (this.isSpeaking || this.queue.length === 0) return;
+    if (!('speechSynthesis' in window)) return;
+
+    const line = this.queue.shift()!;
+    this.isSpeaking = true;
+
+    const utterance = new SpeechSynthesisUtterance(line);
+    this.currentUtterance = utterance;
+    
+    const voice = this.getVoice();
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    } else {
+      utterance.lang = 'te-IN';
+    }
+
+    utterance.rate = 0.85;
+    utterance.pitch = 1.15;
+    utterance.volume = 1;
+
+    utterance.onend = () => {
+      this.isSpeaking = false;
+      this.currentUtterance = null;
+      this.processQueue();
+    };
+
+    utterance.onerror = () => {
+      this.isSpeaking = false;
+      this.currentUtterance = null;
+      this.processQueue();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  cancel() {
+    this.queue = [];
+    this.isSpeaking = false;
+    window.speechSynthesis.cancel();
+    this.currentUtterance = null;
+  }
+}
+
 export const useChat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const speechQueueRef = useRef<SpeechQueue>(new SpeechQueue());
+  const spokenLinesRef = useRef<Set<string>>(new Set());
 
   const sendMessage = useCallback(async (content: string, imageBase64?: string) => {
     if (!content.trim() && !imageBase64) return;
@@ -21,12 +104,21 @@ export const useChat = () => {
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: content || "What's in this image?",
+      content: content || "ఈ చిత్రంలో ఏముంది?",
       imageUrl: imageBase64,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+
+    // Reset speech state
+    speechQueueRef.current.cancel();
+    spokenLinesRef.current.clear();
+
+    // Load voices early
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+    }
 
     // Prepare messages for API
     const apiMessages = [...messages, userMessage].map((msg) => ({
@@ -64,6 +156,7 @@ export const useChat = () => {
       const decoder = new TextDecoder();
       let textBuffer = "";
       let assistantContent = "";
+      let pendingLine = "";
       const assistantId = (Date.now() + 1).toString();
 
       // Add empty assistant message that we'll update
@@ -93,6 +186,8 @@ export const useChat = () => {
             const delta = parsed.choices?.[0]?.delta?.content;
             if (delta) {
               assistantContent += delta;
+              pendingLine += delta;
+
               // Update the assistant message with new content
               setMessages((prev) =>
                 prev.map((msg) =>
@@ -101,6 +196,20 @@ export const useChat = () => {
                     : msg
                 )
               );
+
+              // Check for complete sentences to speak
+              const sentenceEnders = /([.!?।॥\n])/;
+              const match = pendingLine.match(sentenceEnders);
+              if (match && match.index !== undefined) {
+                const completeSentence = pendingLine.slice(0, match.index + 1);
+                pendingLine = pendingLine.slice(match.index + 1);
+                
+                // Speak only if not already spoken
+                if (!spokenLinesRef.current.has(completeSentence)) {
+                  spokenLinesRef.current.add(completeSentence);
+                  speechQueueRef.current.add(completeSentence);
+                }
+              }
             }
           } catch {
             // Incomplete JSON, put it back and wait for more data
@@ -110,7 +219,14 @@ export const useChat = () => {
         }
       }
 
-      // Final flush
+      // Final flush - speak any remaining text
+      if (pendingLine.trim()) {
+        if (!spokenLinesRef.current.has(pendingLine)) {
+          speechQueueRef.current.add(pendingLine);
+        }
+      }
+
+      // Process any remaining buffer
       if (textBuffer.trim()) {
         for (let raw of textBuffer.split("\n")) {
           if (!raw) continue;
@@ -135,76 +251,28 @@ export const useChat = () => {
           } catch { /* ignore */ }
         }
       }
-
-      // Auto-speak the response after streaming completes
-      if (assistantContent) {
-        setTimeout(() => {
-          speakResponse(assistantContent);
-        }, 300);
-      }
     } catch (error) {
       if ((error as Error).name === "AbortError") {
         return;
       }
       console.error("Chat error:", error);
-      toast.error((error as Error).message || "Failed to get response");
+      toast.error((error as Error).message || "సమాధానం పొందడంలో విఫలమైంది");
     } finally {
       setIsLoading(false);
     }
   }, [messages]);
 
   const speakResponse = (text: string) => {
-    if (!('speechSynthesis' in window) || !text) return;
-
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
-
-    // Clean the text for reading
-    const cleanText = text
-      .replace(/\*\*/g, '')
-      .replace(/##/g, '')
-      .replace(/---/g, '')
-      .replace(/─+/g, '')
-      .trim();
-
-    const speak = () => {
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      
-      // Try to find a good voice - prefer Telugu, fallback to any available
-      const voices = window.speechSynthesis.getVoices();
-      const teluguVoice = voices.find(voice => 
-        voice.lang.includes('te') || voice.name.toLowerCase().includes('telugu')
-      );
-      const hindiVoice = voices.find(voice => voice.lang.includes('hi'));
-      const defaultVoice = voices.find(voice => voice.lang.includes('en'));
-      
-      if (teluguVoice) {
-        utterance.voice = teluguVoice;
-        utterance.lang = 'te-IN';
-      } else if (hindiVoice) {
-        utterance.voice = hindiVoice;
-        utterance.lang = 'hi-IN';
-      } else if (defaultVoice) {
-        utterance.voice = defaultVoice;
-        utterance.lang = 'en-US';
+    speechQueueRef.current.cancel();
+    spokenLinesRef.current.clear();
+    
+    // Split into sentences and speak
+    const sentences = text.split(/([.!?।॥\n])/);
+    for (let i = 0; i < sentences.length; i += 2) {
+      const sentence = sentences[i] + (sentences[i + 1] || '');
+      if (sentence.trim()) {
+        speechQueueRef.current.add(sentence);
       }
-
-      utterance.rate = 0.8;
-      utterance.pitch = 1.1;
-      utterance.volume = 1;
-
-      window.speechSynthesis.speak(utterance);
-    };
-
-    // Load voices first if needed
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length === 0) {
-      window.speechSynthesis.onvoiceschanged = () => {
-        speak();
-        window.speechSynthesis.onvoiceschanged = null;
-      };
-    } else {
-      speak();
     }
   };
 
@@ -213,7 +281,8 @@ export const useChat = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    window.speechSynthesis.cancel();
+    speechQueueRef.current.cancel();
+    spokenLinesRef.current.clear();
   }, []);
 
   return {
