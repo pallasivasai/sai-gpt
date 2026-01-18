@@ -55,66 +55,23 @@ export const useChat = () => {
         throw new Error(errorData.error || "Failed to get response");
       }
 
-      if (!response.body) {
-        throw new Error("No response body");
-      }
+      const data = await response.json();
+      
+      // Create assistant message with text and optional image
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: data.content || "I couldn't generate a response.",
+        imageUrl: data.imageUrl || undefined,
+      };
 
-      // Create assistant message
-      const assistantMessageId = (Date.now() + 1).toString();
-      let assistantContent = "";
+      setMessages((prev) => [...prev, assistantMessage]);
 
-      setMessages((prev) => [
-        ...prev,
-        { id: assistantMessageId, role: "assistant", content: "" },
-      ]);
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let textBuffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        textBuffer += decoder.decode(value, { stream: true });
-
-        let newlineIndex: number;
-        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
-          let line = textBuffer.slice(0, newlineIndex);
-          textBuffer = textBuffer.slice(newlineIndex + 1);
-
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) {
-              assistantContent += delta;
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: assistantContent }
-                    : msg
-                )
-              );
-            }
-          } catch {
-            textBuffer = line + "\n" + textBuffer;
-            break;
-          }
-        }
-      }
-
-      // Auto-speak the response after it's complete - with small delay to ensure content is ready
-      if (assistantContent) {
+      // Auto-speak the response after it's complete
+      if (assistantMessage.content) {
         setTimeout(() => {
-          speakResponse(assistantContent);
-        }, 500);
+          speakResponse(assistantMessage.content);
+        }, 300);
       }
     } catch (error) {
       if ((error as Error).name === "AbortError") {
@@ -122,9 +79,6 @@ export const useChat = () => {
       }
       console.error("Chat error:", error);
       toast.error((error as Error).message || "Failed to get response");
-      
-      // Remove empty assistant message on error
-      setMessages((prev) => prev.filter((msg) => msg.content !== ""));
     } finally {
       setIsLoading(false);
     }

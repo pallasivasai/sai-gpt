@@ -58,8 +58,11 @@ const ChatMessage = ({ role, content, imageUrl, onSpeak, isSpeaking }: ChatMessa
         {imageUrl && (
           <img 
             src={imageUrl} 
-            alt="Uploaded" 
-            className="max-w-full h-auto rounded-lg mb-3 max-h-48 object-cover"
+            alt={isUser ? "Uploaded" : "AI Generated illustration"} 
+            className={cn(
+              "max-w-full h-auto rounded-xl mb-4 shadow-lg",
+              isUser ? "max-h-48 object-cover" : "max-h-80 object-contain border-2 border-primary/20"
+            )}
           />
         )}
         <div className="max-w-none">

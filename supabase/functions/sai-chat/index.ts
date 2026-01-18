@@ -5,6 +5,43 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function generateImage(prompt: string, apiKey: string): Promise<string | null> {
+  try {
+    console.log("Generating image for:", prompt);
+    
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image-preview",
+        messages: [
+          {
+            role: "user",
+            content: `Create a beautiful, colorful, child-friendly illustration of ${prompt}. Make it vibrant, divine, and suitable for children learning about Hindu mythology. Style: animated, warm colors, glowing divine aura.`
+          }
+        ],
+        modalities: ["image", "text"]
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Image generation failed:", response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const imageUrl = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    console.log("Image generated successfully");
+    return imageUrl || null;
+  } catch (error) {
+    console.error("Image generation error:", error);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -37,12 +74,36 @@ serve(async (req) => {
       console.log("Image included in request");
     }
 
-    // Prepare messages for the API - SHORT prompt for speed
+    // Enhanced system prompt for detailed ChatGPT-like responses
+    const systemPrompt = `You are SAI, a wise and loving spiritual teacher who explains Hindu mythology to children in an engaging, detailed way.
+
+RESPONSE STYLE:
+- Give DETAILED, RICH explanations like ChatGPT (5-8 paragraphs minimum)
+- Include interesting facts, stories, symbols, and meanings
+- Use simple words but cover the topic thoroughly
+- Make it educational and magical for children
+- Include related deities, stories, festivals connected to the topic
+
+STRUCTURE YOUR RESPONSE:
+1. Start with a warm greeting and introduction
+2. Main explanation with details about appearance, symbols, powers
+3. Famous stories or legends
+4. Why this deity/concept is important
+5. How children can connect (prayers, festivals)
+6. Fun facts that children will love
+
+FORMAT RULES:
+- NO markdown symbols (no **, ##, ---)
+- Use simple paragraphs with line breaks
+- After the English explanation, add a separator line "─────────────────"
+- Then write "తెలుగులో:" and provide the Telugu translation
+- Keep Telugu translation equally detailed
+
+Remember: Children love details, stories, and magical descriptions. Make Lord Shiva's third eye sound fascinating, describe Krishna's flute music beautifully, make Hanuman's strength exciting!`;
+
+    // Prepare messages for the API
     const apiMessages = [
-      {
-        role: "system",
-        content: `You are SAI, a friendly teacher for children about Hindu gods and stories. Answer in 2 sentences max. No markdown. Format: English answer then "తెలుగులో:" then Telugu translation.`
-      },
+      { role: "system", content: systemPrompt },
       ...messages.slice(0, -1),
       {
         role: "user",
@@ -50,6 +111,20 @@ serve(async (req) => {
       }
     ];
 
+    // Start image generation in parallel (don't await here)
+    const userQuery = lastUserMessage.content?.toLowerCase() || "";
+    let imagePromise: Promise<string | null> | null = null;
+    
+    // Generate image for deity/mythology questions
+    const deityKeywords = ['shiva', 'vishnu', 'brahma', 'krishna', 'rama', 'hanuman', 'ganesha', 'ganesh', 'durga', 'lakshmi', 'saraswati', 'parvati', 'kali', 'murugan', 'kartikeya', 'god', 'goddess', 'lord', 'devi', 'temple', 'festival', 'diwali', 'holi', 'navratri', 'dasara'];
+    
+    const shouldGenerateImage = deityKeywords.some(keyword => userQuery.includes(keyword));
+    
+    if (shouldGenerateImage) {
+      imagePromise = generateImage(lastUserMessage.content, LOVABLE_API_KEY);
+    }
+
+    // Get text response with faster model
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -57,9 +132,9 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: "google/gemini-2.5-flash",
         messages: apiMessages,
-        stream: true,
+        stream: false, // Non-streaming for complete response
       }),
     });
 
@@ -86,10 +161,23 @@ serve(async (req) => {
       });
     }
 
-    console.log("Streaming response to client");
+    const data = await response.json();
+    const textContent = data.choices?.[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
+    
+    // Wait for image if we started generating one
+    let imageUrl: string | null = null;
+    if (imagePromise) {
+      imageUrl = await imagePromise;
+    }
 
-    return new Response(response.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+    console.log("Response generated, image:", imageUrl ? "yes" : "no");
+
+    // Return complete response with optional image
+    return new Response(JSON.stringify({ 
+      content: textContent,
+      imageUrl: imageUrl
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("Chat error:", e);
