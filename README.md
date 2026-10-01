@@ -198,3 +198,23 @@ LOVABLE_API_KEY=your_key
 ## Links
 
 - [GitHub Repository](https://github.com/pallasivasai/sai-gpt)
+
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart TD
+    A[User] --> B[React Chat UI]
+    B --> C[ChatInput]
+    C -->|Text| D[useChat]
+    C -->|Telugu Voice te-IN| E[Speech Recognition]
+    C -->|Image Base64| D
+    D --> F[Supabase Edge Function: sai-chat]
+    F --> G[Lovable AI Gateway]
+    G --> H[Gemini 2.5 Flash]
+    H -->|Streaming response| D
+    D --> I[ChatMessage]
+    I --> J[Telugu Speech Synthesis]
+```
+
+This diagram reflects the current React components, browser speech/image handling, Supabase Edge Function, AI gateway, streaming response, and Telugu speech output documented by the repository.
